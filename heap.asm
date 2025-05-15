@@ -4,12 +4,14 @@
 bits 32                           ; Specify 32-bit code generation
 global memspace                   ; Export the 'memspace' symbol for use in C code
 
-; Define heap size as 1GB in 4-byte words (268,435,456 words)
-%define Heapsize (1024 * 1024 * 1024 / 4)  
+; Define heap size as 1MB in 4-byte words (262144 words)
+%define Heapsize (1024 * 1024 / 4)  
 
 ; .bss section is for uninitialized memory - perfect for our heap
-; The OS will reserve this space but won't actually allocate physical memory
-; until the program tries to use it (demand paging)
+; Memory in the .bss section is reserved by the linker but is not part of the executable image.
+; The operating system's loader will zero-initialize this memory when the program starts.
+; This makes it suitable for our heap, which we manage ourselves.
+; The OS uses demand paging, so physical memory is only allocated as the program accesses it.
 section .bss
 align 4                           ; Ensure memory is aligned on 4-byte boundaries for efficient access
 memspace:                         ; Label marking the start of our heap
