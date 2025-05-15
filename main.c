@@ -3,11 +3,11 @@
 /*
  * Recursive function to find a free memory block of at least `allocation` words.
  * `hdr` is the current header we're inspecting.
- * `n` is the offset in words from the beginning of the memory space.
+ * `n` is the offset in words from the *beginning* of the memory space.
  */
 header *findBlock_(header *hdr, word allocation, word n)
 {
-    // Check if we're out of bounds of the heap
+    // This checks if the current position (n) plus the requested allocation size would exceed the heap limits:
     // This ensures we don't try to allocate beyond our memory space limit
     // The -2 accounts for potential header overhead at the end
     if ((n + allocation) > (Maxwords - 2))
@@ -57,7 +57,7 @@ void *mkalloc(word words, header *hdr)
     }
 
     // Update the header to reflect the allocation
-    // Set the size of the block (in words)
+    // Set the size of the block (in # of words)
     hdr->w = words;
     // Mark the block as allocated (no longer free)
     hdr->alloced = true;
@@ -77,7 +77,7 @@ void *alloc(int32 bytes)
     void *mem = (void *)memspace; // Start of our heap (defined in heap.asm)
     header *hdr = (header *)mem;
 
-    // Round up to nearest word (4 bytes)
+    // Round up to nearest word (4 bytes). Adding 3 (which is divisor-1) to the dividend before performing integer division is a common programming technique. The formula (n + (d-1)) / d always rounds up for positive integers. This is equivalent to the mathematical ceiling function : ⌈n / d⌉
     // This ensures proper alignment of all allocations
     words = (bytes + 3) / 4;
 
@@ -115,7 +115,8 @@ void *alloc(int32 bytes)
 int main(int unused argc, char **unused argv)
 {
     // Attempt to allocate 2000 bytes (500 words since each word is 4 bytes)
-    void *ptr = alloc(2000);
+    void *ptr;
+    ptr = alloc(2000);
 
     // Check if allocation failed
     if (!ptr)
@@ -124,6 +125,16 @@ int main(int unused argc, char **unused argv)
         printf("Error %d\n", errno);
         return -1;
     }
+
+
+    // Memory Address:  0x565d900c       0x565d9010                           
+    //              +--------------+----------------------------------+
+    //              | Header (4B)  | User Data (2000B requested)      |
+    //              +--------------+----------------------------------+
+    //              ^              ^
+    //              |              |
+    //              |              +-- allocated pointer (returned to user)
+    //              +-- memspace base address & header address
 
     // Print diagnostic information to demonstrate the memory layout
     // Shows the base address of our memory space
