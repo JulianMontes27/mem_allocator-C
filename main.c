@@ -7,6 +7,105 @@
 #include "main.h"
 
 /*
+ * Frees a block of memory previously allocated by alloc().
+ * Takes a pointer `ptr` to the data part of the allocated block.
+ * Marks the corresponding block header as free.
+ * Includes basic validation checks.
+ * Does NOT yet include coalescing.
+ */
+void freealloc(void *ptr)
+{
+    if (ptr == NULL)
+    {
+        // Standard C behavior: calling free(NULL) has no effect.
+        printf("free: Called with NULL pointer. Doing nothing.\n");
+        return;
+    }
+
+    printf("free: Attempting to free pointer %p\n", ptr);
+
+    // Calculate the address of the block header.
+    // The header is always located immediately before the data pointer returned by alloc.
+    // By casting the void pointer to a header pointer and subtracting 1,
+    // pointer arithmetic moves back by sizeof(header) bytes.
+    header *hdr = (header *)ptr - 1;
+
+    // --- Basic Validation Checks ---
+    // These checks help prevent crashes or heap corruption from invalid free calls.
+    // Check if the calculated header address is within the bounds of our memspace.
+    // A valid header must be at or after the start of memspace and sufficiently before the end to potentially describe a block (at least 1 word for the header itself).
+
+    // Calculate the offset of the header form the sstart of the memspace
+    word hdr_offfset = ((char *)hdr - (char *)memspace) / 4;
+    if (hdr < (header *)memspace || hdr_offfset >= Maxwords)
+    {
+        printf("free: Error: Invalid pointer %p (calculated header %p, offset %d) - outside heap bounds.\n", ptr, hdr, hdr_offfset);
+        // In a real system, this might abort or log a critical error.
+        // We'll print and return for now.
+        return;
+    }
+
+    // Check if the block is currently marked as allocated.
+    // Freeing a block that is already free (double-free) is an error.
+    if (!hdr->alloced)
+    {
+        printf("free: Error: Pointer %p (header %p) is already free.\n", ptr, hdr);
+        // Again, might abort or log in a real system.
+        return;
+    }
+
+    // Check for a zero-sized block being freed. While unlikely with current alloc,
+    // it's a safety check against corruption. A valid header should have w >= 1.
+    if (hdr->w == 0)
+    {
+        printf("free: Error: Pointer %p (header %p) has a zero size header. Heap possibly corrupted.\n", ptr, hdr);
+        return;
+    }
+
+    // --- Mark the block as free ---
+    hdr->alloced = false;
+    printf("free: Marked block at %p (header %p, size %d words) as free.\n", ptr, hdr, hdr->w);
+
+    // --- Coalescing (Merging with the next block) ---
+    // When a block is freed, we should check the block immediately following it. If the next block is also free, we can merge the newly freed block and the next free block into a single, larger free block. This reduces fragmentation.
+
+    // This is located immediately after the current block being freed.
+    header *next_blocks_header = (header *)((char *)hdr + hdr->w * 4);
+
+    // Calculate the offset of the potential next header.
+    word next_hdr_offset = hdr_offfset + hdr->w;
+
+    if (next_hdr_offset < Maxwords)
+    {
+        if (!next_blocks_header->alloced)
+        {
+            // Check if the next block has a valid non-zero size (safety).
+            if (next_blocks_header->w > 0)
+            {
+                printf("free: Coalescing with next free block at %p (size %d words).\n", next_blocks_header, next_blocks_header->w);
+
+                hdr->w += next_blocks_header->w;
+                printf("free: Merged block size is now %d words.\n", hdr->w);
+            }
+            else
+            {
+                printf("free: Warning: Next block at %p has zero size. Skipping coalescing with it.\n", next_blocks_header);
+            }
+        }
+        else
+        {
+            printf("free: Next block at %p is allocated. Cannot coalesce forward.\n", next_blocks_header);
+        }
+    }
+    else
+    {
+        printf("free: No next block within bounds (offset %d >= %d). Cannot coalesce forward.\n", next_hdr_offset, Maxwords);
+    }
+
+    printf("free: Free operation completed for pointer %p.\n", ptr);
+};
+
+/*
  * Recursive function to find a free memory block of at least `words_to_alloc` words.
  * It searches the heap starting from `hdr`.
  * `hdr` is the current header of the block being inspected.
@@ -248,25 +347,30 @@ int main(int unused argc, char **unused argv)
         print_memory_layout();
     }
 
-    // Print diagnostic information
-    printf("\nMemory allocation details:\n");
-    printf("memspace base address: %p\n", (void *)memspace);
-    printf("allocated pointer 1:     %p\n", ptr);
+    // --- Freeing blocks ---
+    printf("\n--- Freeing blocks ---\n");
+    printf("Freeing first allocated block (8 bytes).\n");
+
+    freealloc(ptr);
+
+    // Print layout after freeing the first block (should show it as free).
+    // Note: Forward coalescing won't happen here unless ptr2 was NULL.
+    print_memory_layout();
 
     if (ptr2)
     {
-        printf("allocated pointer 2:     %p\n", ptr2);
+        printf("Freeing second allocated block (16 bytes).\n");
+        freealloc(ptr2); // Free the second block
     }
 
-    // Show header locations
-    header *hdr1 = (header *)ptr - 1;
-    printf("header 1 is at:%p (size: %d words)\n", (void *)hdr1, hdr1->w);
+    // Print layout after freeing the second block.
+    // Forward coalescing SHOULD happen here, merging the block freed by ptr2
+    // with the large free block that followed it.
+    print_memory_layout();
 
-    if (ptr2)
-    {
-        header *hdr2 = (header *)ptr2 - 1;
-        printf("header 2 is at: %p (size: %d words)\n", (void *)hdr2, hdr2->w);
-    }
+    // --- Diagnostic Information ---
+    printf("\nMemory allocation details (pointers might be invalid if freed):\n");
+    printf("memspace base address:%p\n", (void *)memspace); // Address of the start of the heap.
 
     return 0; // Indicate successful program execution by returning 0 from main.
 }

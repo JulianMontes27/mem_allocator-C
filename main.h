@@ -65,6 +65,7 @@ extern char memspace[];
 // Function declarations
 // The core memory allocation functions provided by this allocator.
 header *findBlock_(header *hdr, word words_to_alloc, word n); // Finds a free block of suitable size
+void freealloc(void *ptr);
 void *mkalloc(word words_to_alloc, header *hdr);              // Marks a block as allocated
 void *alloc(int32 bytes);                                     // Top-level allocation function (similar to malloc)
 
